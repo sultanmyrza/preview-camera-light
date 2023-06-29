@@ -29,6 +29,7 @@
     "@capacitor/keyboard": "5.0.4",
     "@capacitor/status-bar": "5.0.4",
     "@ionic/angular": "^7.0.0",
+    "@sultanmyrza/preview-camera-lite": "file:../..",
     "ionicons": "^7.0.0",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",
