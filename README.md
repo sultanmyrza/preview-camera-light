@@ -20,6 +20,7 @@ npx cap sync
 * [`startRecord()`](#startrecord)
 * [`stopRecord()`](#stoprecord)
 * [`flipCamera()`](#flipcamera)
+* [`requestPermissions()`](#requestpermissions)
 * [`addListener('captureSuccessResult', ...)`](#addlistenercapturesuccessresult)
 * [`addListener('captureErrorResult', ...)`](#addlistenercaptureerrorresult)
 * [Interfaces](#interfaces)
@@ -99,6 +100,17 @@ flipCamera() => Promise<void>
 --------------------
 
 
+### requestPermissions()
+
+```typescript
+requestPermissions() => Promise<PermissionStatus>
+```
+
+**Returns:** <code>Promise&lt;<a href="#permissionstatus">PermissionStatus</a>&gt;</code>
+
+--------------------
+
+
 ### addListener('captureSuccessResult', ...)
 
 ```typescript
@@ -134,6 +146,18 @@ addListener(eventName: 'captureErrorResult', listenerFunc: CaptureErrorResultLis
 ### Interfaces
 
 
+#### PermissionStatus
+
+Represents the status of permissions required for camera and microphone access.
+- `camera` permission is needed to take photo and record video without audio.
+- `microphone` permission is needed to record video with audio.
+
+| Prop             | Type                                                        |
+| ---------------- | ----------------------------------------------------------- |
+| **`camera`**     | <code><a href="#permissionstate">PermissionState</a></code> |
+| **`microphone`** | <code><a href="#permissionstate">PermissionState</a></code> |
+
+
 #### PluginListenerHandle
 
 | Prop         | Type                                      |
@@ -163,6 +187,11 @@ Represents the result of a failed capture operation.
 
 
 ### Type Aliases
+
+
+#### PermissionState
+
+<code>'prompt' | 'prompt-with-rationale' | 'granted' | 'denied'</code>
 
 
 #### CaptureSuccessResultListener
