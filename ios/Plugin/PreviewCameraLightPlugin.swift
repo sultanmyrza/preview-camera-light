@@ -51,8 +51,6 @@ public class PreviewCameraLightPlugin: CAPPlugin {
                         let isBridgeScrollView = item.isEqual(bridge.webView?.scrollView)
                         
                         if isScrollView && !isBridgeScrollView {
-                            (item as? UIScrollView)?.isScrollEnabled = true
-                            
                             if item.tag == 0 {
                                 self.targetViewController = item
                                 break
