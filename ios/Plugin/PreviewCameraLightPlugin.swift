@@ -1,17 +1,20 @@
 import Foundation
 import Capacitor
 import AVFoundation
+import Photos
 
 /**
  * Please read the Capacitor iOS Plugin Development Guide
  * here: https://capacitorjs.com/docs/plugins/ios
  */
 @objc(PreviewCameraLightPlugin)
-public class PreviewCameraLightPlugin: CAPPlugin {
+public class PreviewCameraLightPlugin: CAPPlugin, AVCapturePhotoCaptureDelegate {
     private let implementation = PreviewCameraLight()
     
     private var captureSession: AVCaptureSession?
     private var previewLayer: AVCaptureVideoPreviewLayer?
+    
+    private var photoOutput: AVCapturePhotoOutput?
     
     private var targetViewController: UIView?
     
@@ -43,6 +46,14 @@ public class PreviewCameraLightPlugin: CAPPlugin {
                     captureSession.addInput(videoInput)
                 } else {
                     throw NSError(domain: "", code: 0, userInfo: [NSLocalizedDescriptionKey: "Couldn't add video input"])
+                }
+                
+                let photoOutput = AVCapturePhotoOutput()
+                if (captureSession.canAddOutput(photoOutput)) {
+                    captureSession.addOutput(photoOutput)
+                    self.photoOutput = photoOutput  // make sure to define this property
+                } else {
+                    throw NSError(domain: "", code: 0, userInfo: [NSLocalizedDescriptionKey: "Couldn't add photo output"])
                 }
                 
                 if let bridge = self.bridge {
@@ -94,6 +105,32 @@ public class PreviewCameraLightPlugin: CAPPlugin {
             call.resolve()
         }
     }
+    
+    @objc func takePhoto(_ call: CAPPluginCall) {
+        let settings = AVCapturePhotoSettings()
+        self.photoOutput?.capturePhoto(with: settings, delegate: self)
+    }
+    
+    public func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
+        guard let imageData = photo.fileDataRepresentation(), let image = UIImage(data: imageData) else {
+            print("Failed to convert image data to UIImage")
+            return
+        }
+        let fileName = UUID().uuidString + ".jpg"
+        let tempDir = NSTemporaryDirectory()
+        let imageURL = URL(fileURLWithPath: tempDir).appendingPathComponent(fileName)
+        
+        do {
+            try imageData.write(to: imageURL)
+            // Notify listeners of the saved image path
+            self.notifyListeners("captureSuccessResult", data: ["path": imageURL.path, "name": fileName, "mimeType": "image/jpeg", "size": imageData.count])
+        } catch {
+            print("Failed to write image data to temporary file: \(error)")
+            self.notifyListeners("captureErrorResult", data: ["errorMessage": "Failed to save image to temporary directory: \(error.localizedDescription)"])
+        }
+        
+    }
+  
 
     
     @objc override public func checkPermissions(_ call: CAPPluginCall) {
