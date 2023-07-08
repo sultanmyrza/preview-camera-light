@@ -8,13 +8,14 @@ import Photos
  * here: https://capacitorjs.com/docs/plugins/ios
  */
 @objc(PreviewCameraLightPlugin)
-public class PreviewCameraLightPlugin: CAPPlugin, AVCapturePhotoCaptureDelegate {
+public class PreviewCameraLightPlugin: CAPPlugin, AVCapturePhotoCaptureDelegate, AVCaptureFileOutputRecordingDelegate {
     private let implementation = PreviewCameraLight()
     
     private var captureSession: AVCaptureSession?
     private var previewLayer: AVCaptureVideoPreviewLayer?
     
     private var photoOutput: AVCapturePhotoOutput?
+    private var movieOutput: AVCaptureMovieFileOutput?
     
     private var targetViewController: UIView?
     
@@ -28,27 +29,51 @@ public class PreviewCameraLightPlugin: CAPPlugin, AVCapturePhotoCaptureDelegate 
     @objc func startPreview(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
             do {
+                // Check if video capture device is available
                 guard let videoCaptureDevice = AVCaptureDevice.default(for: .video) else {
                     throw NSError(domain: "", code: 0, userInfo: [NSLocalizedDescriptionKey: "No video device available"])
                 }
                 
+                // Create a device input with the video capture device
                 let videoInput = try AVCaptureDeviceInput(device: videoCaptureDevice)
                 
+                // Check if audio capture device is available
+                guard let audioDevice = AVCaptureDevice.default(for: .audio) else {
+                    throw NSError(domain: "", code: 0, userInfo: [NSLocalizedDescriptionKey: "No audio device available"])
+                }
+                
+                // Create a device input with the audio capture device
+                let audioInput = try AVCaptureDeviceInput(device: audioDevice)
+                
+                // Create a new AVCaptureSession
                 self.captureSession = AVCaptureSession()
+                
+                // Create a new AVCaptureVideoPreviewLayer with the capture session
                 self.previewLayer = AVCaptureVideoPreviewLayer(session: self.captureSession!)
+                // Set the video gravity to maintain the aspect ratio
                 self.previewLayer?.videoGravity = .resizeAspectFill
                 
                 guard let captureSession = self.captureSession else {
                     throw NSError(domain: "", code: 0, userInfo: [NSLocalizedDescriptionKey: "Could not create capture session"])
                 }
                 
+                // Add video input to the capture session
                 if (captureSession.canAddInput(videoInput)) {
                     captureSession.addInput(videoInput)
                 } else {
                     throw NSError(domain: "", code: 0, userInfo: [NSLocalizedDescriptionKey: "Couldn't add video input"])
                 }
                 
+                // Add audio input to the capture session
+                if captureSession.canAddInput(audioInput) {
+                    captureSession.addInput(audioInput)
+                } else {
+                    throw NSError(domain: "", code: 0, userInfo: [NSLocalizedDescriptionKey: "Couldn't add audio input"])
+                }
+                
+                // Create a new AVCapturePhotoOutput
                 let photoOutput = AVCapturePhotoOutput()
+                // Add photo output to the capture session
                 if (captureSession.canAddOutput(photoOutput)) {
                     captureSession.addOutput(photoOutput)
                     self.photoOutput = photoOutput  // make sure to define this property
@@ -56,11 +81,23 @@ public class PreviewCameraLightPlugin: CAPPlugin, AVCapturePhotoCaptureDelegate 
                     throw NSError(domain: "", code: 0, userInfo: [NSLocalizedDescriptionKey: "Couldn't add photo output"])
                 }
                 
+                // Create a new AVCaptureMovieFileOutput
+                let movieOutput = AVCaptureMovieFileOutput()
+                // Add movie output to the capture session
+                if (captureSession.canAddOutput(movieOutput)) {
+                    captureSession.addOutput(movieOutput)
+                    self.movieOutput = movieOutput
+                } else {
+                    throw NSError(domain: "", code: 0, userInfo: [NSLocalizedDescriptionKey: "Couldn't add movie output"])
+                }
+                
+                // Check for web view and get all subviews
                 if let bridge = self.bridge {
                     for item in bridge.webView!.getAllSubViews() {
                         let isScrollView = item.isKind(of: NSClassFromString("WKChildScrollView")!) || item.isKind(of: NSClassFromString("WKScrollView")!)
                         let isBridgeScrollView = item.isEqual(bridge.webView?.scrollView)
                         
+                        // Look for a scroll view that is not the web view's scroll view and has a tag of 0
                         if isScrollView && !isBridgeScrollView {
                             if item.tag == 0 {
                                 self.targetViewController = item
@@ -69,6 +106,7 @@ public class PreviewCameraLightPlugin: CAPPlugin, AVCapturePhotoCaptureDelegate 
                         }
                     }
                     
+                    // If a target view controller is found, remove all its subviews and add the preview layer to it
                     if let target = self.targetViewController, let previewLayer = self.previewLayer {
                         target.tag = 1
                         target.removeAllSubView()
@@ -77,10 +115,12 @@ public class PreviewCameraLightPlugin: CAPPlugin, AVCapturePhotoCaptureDelegate 
                     }
                 }
                 
+                // Start the capture session
                 captureSession.startRunning()
                 call.resolve()
                 
             } catch {
+                // In case of error, reject the call with error message
                 call.reject("Error: \(error.localizedDescription)")
             }
         }
@@ -112,26 +152,43 @@ public class PreviewCameraLightPlugin: CAPPlugin, AVCapturePhotoCaptureDelegate 
     }
     
     public func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
-        guard let imageData = photo.fileDataRepresentation(), let image = UIImage(data: imageData) else {
-            print("Failed to convert image data to UIImage")
+        guard let imageData = photo.fileDataRepresentation() else {
+            self.notifyListeners("captureErrorResult", data: ["errorMessage": "Failed to get image data"])
             return
         }
-        let fileName = UUID().uuidString + ".jpg"
-        let tempDir = NSTemporaryDirectory()
-        let imageURL = URL(fileURLWithPath: tempDir).appendingPathComponent(fileName)
-        
         do {
-            try imageData.write(to: imageURL)
-            // Notify listeners of the saved image path
-            self.notifyListeners("captureSuccessResult", data: ["path": imageURL.path, "name": fileName, "mimeType": "image/jpeg", "size": imageData.count])
+            let fileName = UUID().uuidString + ".jpg"
+            let filePath = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
+            try imageData.write(to: filePath)
+            self.notifyListeners("captureSuccessResult", data: ["path": filePath.path, "name": fileName, "mimeType": "image/jpeg", "size": imageData.count])
         } catch {
-            print("Failed to write image data to temporary file: \(error)")
             self.notifyListeners("captureErrorResult", data: ["errorMessage": "Failed to save image to temporary directory: \(error.localizedDescription)"])
         }
-        
     }
-  
+    
+    @objc func startRecord(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            let fileName = NSUUID().uuidString + ".mov"
+            let filePath = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
+            self.movieOutput?.startRecording(to: filePath, recordingDelegate: self)
+            call.resolve()
+        }
+    }
 
+    @objc func stopRecord(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            self.movieOutput?.stopRecording()
+            call.resolve()
+        }
+    }
+    
+    public func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL, from connections: [AVCaptureConnection], error: Error?) {
+        if let error = error {
+            self.notifyListeners("captureErrorResult", data: ["errorMessage": "Failed to record video: \(error.localizedDescription)"])
+        } else {
+            self.notifyListeners("captureSuccessResult", data: ["path": outputFileURL.path])
+        }
+    }
     
     @objc override public func checkPermissions(_ call: CAPPluginCall) {
         var result: [String: Any] = [:]
